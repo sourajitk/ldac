@@ -1,0 +1,23 @@
+# Build output & compiled binaries
+bin/
+*.o
+*.obj
+*.lib
+*.exp
+*.dll
+*.exe
+*.sys
+*.pdb
+*.cat
+
+# Visual Studio & IDE artifacts
+.vs/
+*.user
+*.suo
+x64/
+Debug/
+Release/
+
+# Temporary generated test streams
+samples/*.ldac
+samples/*_decoded.wav
