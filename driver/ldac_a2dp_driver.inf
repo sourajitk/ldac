@@ -1,0 +1,74 @@
+;
+; Sony LDAC Bluetooth High-Resolution A2DP Driver Package
+; Copyright (c) 2026 LDAC-Windows Project. All rights reserved.
+; Compatible with Windows 10 (1903+) and Windows 11
+;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = MEDIA
+ClassGUID   = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+DriverVer   = 10/22/2026,1.0.0.1
+CatalogFile = ldac_a2dp_driver.cat
+
+[DestinationDirs]
+DefaultDestDir = 12 ; DIRID_DRIVERS
+LdacDriver.CopyFiles = 11 ; System32
+LdacBin.CopyFiles = 10,LDAC ; C:\Windows\LDAC
+
+[SourceDisksNames]
+1 = %DiskDescription%,,,
+
+[SourceDisksFiles]
+ldac_codec.dll   = 1
+ldac_service.exe = 1
+ldac_cli.exe     = 1
+
+[Manufacturer]
+%ManufacturerName% = Standard, NTamd64
+
+[Standard.NTamd64]
+%DeviceDesc% = LdacA2dp_Device, BTHENUM\{0000110b-0000-1000-8000-00805f9b34fb}
+
+[LdacA2dp_Device.NT]
+CopyFiles = LdacDriver.CopyFiles, LdacBin.CopyFiles
+AddReg    = LdacA2dp.AddReg
+
+[LdacDriver.CopyFiles]
+ldac_codec.dll,,,0x00000010 ; COPYFLG_FORCE_FILE_IN_USE
+
+[LdacBin.CopyFiles]
+ldac_service.exe,,,0x00000010
+ldac_cli.exe,,,0x00000010
+
+[LdacA2dp.AddReg]
+HKR,,DriverVersion,,%DriverVersion%
+HKR,,Provider,,%ProviderName%
+HKR,,A2dpVendorCodecEnabled,0x00010001,1
+HKR,,VendorId,0x00010001,0x0000012D ; Sony Corporation
+HKR,,CodecId,0x00010001,0x00AA      ; LDAC
+HKR,,PreferredSampleRate,0x00010001,96000
+HKR,,PreferredBitDepth,0x00010001,24
+HKR,,PreferredBitrateMode,0x00010001,0 ; 0 = 990 kbps (HQ)
+HKR,,AdaptiveBitrateEnabled,0x00010001,1
+
+[LdacA2dp_Device.NT.Services]
+AddService = LdacAudioService, 0x00000002, LdacService_Service_Inst
+
+[LdacService_Service_Inst]
+DisplayName    = %ServiceDescription%
+ServiceType    = 0x00000010 ; SERVICE_WIN32_OWN_PROCESS
+StartType      = 2          ; SERVICE_AUTO_START
+ErrorControl   = 1          ; SERVICE_ERROR_NORMAL
+ServiceBinary  = "%10%\LDAC\ldac_service.exe --service"
+Description    = %ServiceDetailedDesc%
+
+[Strings]
+ProviderName        = "LDAC Open Project"
+ManufacturerName    = "Sony LDAC Windows Integration"
+DiskDescription     = "LDAC Driver Installation Media"
+DeviceDesc          = "Sony LDAC Bluetooth High-Resolution Audio Source"
+ServiceDescription  = "Sony LDAC Bluetooth Audio Streaming Service"
+ServiceDetailedDesc = "Manages 96kHz/24-bit Hi-Res LDAC audio encoding and transmission to compatible Bluetooth headphones and DACs."
+DriverVersion       = "1.0.0.1"
