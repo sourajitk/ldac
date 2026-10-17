@@ -1,0 +1,72 @@
+;
+; Sony LDAC Bluetooth High-Resolution Audio KMDF Upper Filter Driver
+; Target: BTHENUM\{0000110b-0000-1000-8000-00805f9b34fb}
+; Copyright (c) 2026 LDAC-Windows Open Source Project. All rights reserved.
+;
+
+[Version]
+Signature   = "$Windows NT$"
+Class       = MEDIA
+ClassGUID   = {4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider    = %ProviderName%
+CatalogFile = ldac_filter.cat
+DriverVer   = 10/22/2026,1.0.0.1
+PnpLockdown = 1
+
+[DestinationDirs]
+DefaultDestDir = 13 ; Driver Store directory
+
+[SourceDisksNames]
+1 = %DiskName%,,,
+
+[SourceDisksFiles]
+ldac_filter.sys = 1,,
+
+[Manufacturer]
+%ManufacturerName% = Standard, NTamd64.10.0...16299
+
+[Standard.NTamd64.10.0...16299]
+%DeviceDesc% = LdacFilter_Install, BTHENUM\{0000110b-0000-1000-8000-00805f9b34fb}
+
+[LdacFilter_Install.NT]
+Include = btha2dp.inf
+Needs   = BthA2dp.NT
+CopyFiles = LdacFilter_Files
+
+[LdacFilter_Files]
+ldac_filter.sys
+
+[LdacFilter_Install.NT.HW]
+Include = btha2dp.inf
+Needs   = BthA2dp.NT.HW
+AddReg  = LdacFilter_HW.AddReg
+
+[LdacFilter_HW.AddReg]
+; 0x00010008 = FLG_ADDREG_TYPE_MULTI_SZ | FLG_ADDREG_APPEND
+HKR,,"UpperFilters",0x00010008,"ldac_filter"
+
+[LdacFilter_Install.NT.Services]
+Include = btha2dp.inf
+Needs   = BthA2dp.NT.Services
+AddService = ldac_filter,,LdacFilter_Service_Inst
+
+[LdacFilter_Service_Inst]
+DisplayName    = %ServiceDesc%
+ServiceType    = 1               ; SERVICE_KERNEL_DRIVER
+StartType      = 3               ; SERVICE_DEMAND_START
+ErrorControl   = 1               ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %13%\ldac_filter.sys
+LoadOrderGroup = PnP Filter
+
+[LdacFilter_Install.NT.Wdf]
+KmdfService = ldac_filter, LdacFilter_wdfsect
+
+[LdacFilter_wdfsect]
+KmdfLibraryVersion = 1.33
+
+[Strings]
+ProviderName     = "LDAC Open Source Project"
+ManufacturerName = "Sony LDAC Windows Integration"
+DiskName         = "Sony LDAC Filter Driver Installation Disk"
+DeviceDesc       = "Sony LDAC Bluetooth High-Resolution Audio Adapter"
+ServiceDesc      = "Sony LDAC Bluetooth A2DP KMDF Upper Filter Driver"
