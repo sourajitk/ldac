@@ -1,0 +1,138 @@
+name: Build, Package, and Sign LDAC Driver
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  build:
+    name: Build & Package Driver Suite
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup LLVM / Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17.0.6"
+
+      - name: Install Windows Driver Kit (WDK)
+        shell: pwsh
+        run: |
+          Write-Host "Installing Windows Driver Kit (WDK) build tools..."
+          $wdkUrl = "https://go.microsoft.com/fwlink/?linkid=2196230"
+          Invoke-WebRequest -Uri $wdkUrl -OutFile wdksetup.exe
+          Start-Process -FilePath .\wdksetup.exe -ArgumentList "/features + /q" -Wait
+          Remove-Item .\wdksetup.exe -Force
+
+      - name: Build User-Mode Suite (DLL, CLI, Service, GUI)
+        shell: cmd
+        run: |
+          call build.bat
+
+      - name: Run Unit Tests
+        shell: cmd
+        run: |
+          bin\test_ldac_codec.exe
+
+      - name: Run Codec Benchmark
+        shell: cmd
+        run: |
+          bin\ldac_cli.exe benchmark
+
+      - name: Build KMDF Kernel Filter Driver
+        shell: cmd
+        run: |
+          msbuild driver\kernel\ldac_filter.vcxproj /p:Configuration=Release /p:Platform=x64 /p:TargetVersion=Windows10
+
+      - name: Create Driver Submission CAB for Microsoft Attestation
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "package\driver"
+          Copy-Item "driver\kernel\x64\Release\ldac_filter.sys" "package\driver\" -ErrorAction SilentlyContinue
+          Copy-Item "driver\kernel\ldac_filter.inf" "package\driver\"
+          Copy-Item "bin\ldac_codec.dll" "package\driver\"
+
+          # Generate DDF file for makecab
+          $ddf = @"
+          .OPTION EXPLICIT
+          .Set CabinetNameTemplate=ldac_filter_attestation.cab
+          .Set DiskDirectory1=package
+          .Set MaxDiskSize=CDROM
+          .Set Cabinet=on
+          .Set Compress=on
+          package\driver\ldac_filter.sys
+          package\driver\ldac_filter.inf
+          package\driver\ldac_codec.dll
+          "@
+          $ddf | Out-File -Encoding ASCII package\driver.ddf
+          makecab /F package\driver.ddf
+
+      # --- FREE OPEN-SOURCE SIGNING VIA SIGNPATH.IO ---
+      - name: Submit Signing Request to SignPath.io (Free Open-Source EV)
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: SignPath/github-action-submit-signing-request@v1
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: "initial"
+          wait-for-completion: true
+          output-artifact-directory: "package_signed"
+          input-artifact-filepath: "package/ldac_filter_attestation.cab"
+
+      # --- FALLBACK: DIRECT LOCAL EV CERTIFICATE SIGNING ---
+      - name: Sign Driver with Private EV Certificate (Fallback)
+        if: env.EV_CERT_BASE64 != '' && env.SIGNPATH_API_TOKEN == ''
+        shell: pwsh
+        env:
+          EV_CERT_BASE64: ${{ secrets.EV_CERT_BASE64 }}
+          EV_CERT_PASSWORD: ${{ secrets.EV_CERT_PASSWORD }}
+        run: |
+          $certBytes = [Convert]::FromBase64String($env:EV_CERT_BASE64)
+          [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+          $signtool = (Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin\" -Filter "signtool.exe" -Recurse | Select-Object -First 1).FullName
+          & $signtool sign /f cert.pfx /p $env:EV_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "package\driver\ldac_filter.sys"
+          & $signtool sign /f cert.pfx /p $env:EV_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 "package\ldac_filter_attestation.cab"
+          Remove-Item cert.pfx -Force
+
+      - name: Prepare Final Release Archive
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "release_zip\LDAC-Windows"
+          Copy-Item -Recurse "bin\*" "release_zip\LDAC-Windows\"
+          Copy-Item -Recurse "driver\*" "release_zip\LDAC-Windows\driver\"
+          Copy-Item "README.md" "release_zip\LDAC-Windows\"
+          Compress-Archive -Path "release_zip\LDAC-Windows" -DestinationPath "LDAC-Windows-Driver-Suite-x64.zip"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LDAC-Windows-Driver-Suite-x64
+          path: LDAC-Windows-Driver-Suite-x64.zip
+
+      - name: Publish GitHub Release (On Tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            LDAC-Windows-Driver-Suite-x64.zip
+            package/ldac_filter_attestation.cab
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
