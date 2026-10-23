@@ -512,4 +512,5 @@ int ldacNullPacket( ldacdec_t *this, uint8_t *output, int *bytesUsed )
     }
 
     *bytesUsed = frame->frameLength + 3;
+    return 0;
 }
